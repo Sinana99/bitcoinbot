@@ -24,6 +24,6 @@ python bot.py
 ```
 
 ## Features
-- Posts Bitcoin price once daily
-- Uses CoinGecko API for price data
+- Posts Bitcoin support and resistance level alerts
+- Uses Binance API for price data
 - Automatically schedules posts 
