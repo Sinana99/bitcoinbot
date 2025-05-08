@@ -24,7 +24,7 @@ def get_bitcoin_data():
 
         klines = client.get_klines(
             symbol='BTCUSDT',
-            interval=Client.KLINE_INTERVAL_4HOUR,
+            interval=Client.KLINE_INTERVAL_1HOUR,
             limit=96
         )
 
@@ -116,7 +116,7 @@ def post_initial_tweet():
         )
 
         # Changed the tweet text to a simple generic message
-        tweet_text = "Hello everyone! Bot is starting up. 👋"
+        tweet_text = "Hello everyone! Today is a good day! 👋"
 
         response = client.create_tweet(text=tweet_text)
         print(f"Successfully posted initial tweet: {tweet_text}")
