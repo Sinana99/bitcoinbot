@@ -106,7 +106,7 @@ def post_tweet(price, level, level_type):
     except Exception as e:
         print(f"Error posting tweet: {e}")
 
-def post_initial_tweet(price, support, resistance):
+def post_initial_tweet():
     try:
         client = tweepy.Client(
             consumer_key=TWITTER_API_KEY,
@@ -115,9 +115,8 @@ def post_initial_tweet(price, support, resistance):
             access_token_secret=TWITTER_ACCESS_TOKEN_SECRET
         )
 
-        current_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-
-        tweet_text = f"Bot Started! Current BTC Price: ${price:,.2f} #Bitcoin #Crypto"
+        # Changed the tweet text to a simple generic message
+        tweet_text = "Hello everyone! Bot is starting up. 👋"
 
         response = client.create_tweet(text=tweet_text)
         print(f"Successfully posted initial tweet: {tweet_text}")
@@ -132,6 +131,8 @@ def main():
     print("Starting Simplified Bitcoin Support/Resistance Monitor Bot...")
     print("Using Binance API for 4-hour price data")
 
+    post_initial_tweet()
+
     initial_data = get_bitcoin_data()
     if initial_data is not None and initial_data:
         initial_price, initial_support, initial_resistance = find_simple_support_resistance(initial_data)
@@ -142,7 +143,6 @@ def main():
     else:
         print("Failed to fetch initial Bitcoin data for startup tweet.")
 
-    post_initial_tweet(initial_price, initial_support, initial_resistance)
 
     last_tweet_time = time.time()
     last_tweeted_level = None
