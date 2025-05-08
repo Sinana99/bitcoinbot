@@ -142,6 +142,8 @@ def main():
     else:
         print("Failed to fetch initial Bitcoin data for startup tweet.")
 
+    post_initial_tweet(initial_price, initial_support, initial_resistance)
+
     last_tweet_time = time.time()
     last_tweeted_level = None
 
