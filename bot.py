@@ -1,7 +1,6 @@
 import os
 import time
 import tweepy
-import pandas as pd
 from datetime import datetime
 from dotenv import load_dotenv
 from binance.client import Client
@@ -14,7 +13,7 @@ TWITTER_API_SECRET = os.getenv('TWITTER_API_SECRET')
 TWITTER_ACCESS_TOKEN = os.getenv('TWITTER_ACCESS_TOKEN')
 TWITTER_ACCESS_TOKEN_SECRET = os.getenv('TWITTER_ACCESS_TOKEN_SECRET')
 
-BINANCE_API_KEY = os.getenv('BINANCE_API_KEY')  
+BINANCE_API_KEY = os.getenv('BINANCE_API_KEY')
 BINANCE_API_SECRET = os.getenv('BINANCE_API_SECRET')
 
 MIN_TWEET_INTERVAL = 4 * 3600
@@ -29,19 +28,22 @@ def get_bitcoin_data():
             limit=96
         )
 
-        df = pd.DataFrame(klines, columns=[
-            'timestamp', 'open', 'high', 'low', 'close', 'volume',
-            'close_time', 'quote_volume', 'trades', 'taker_buy_base',
-            'taker_buy_quote', 'ignore'
-        ])
+        processed_data = []
+        for kline in klines:
+            timestamp = datetime.fromtimestamp(kline[0] / 1000)
+            open_price = float(kline[1])
+            high_price = float(kline[2])
+            low_price = float(kline[3])
+            close_price = float(kline[4])
+            processed_data.append({
+                'timestamp': timestamp,
+                'open': open_price,
+                'high': high_price,
+                'low': low_price,
+                'close': close_price
+            })
 
-        df['timestamp'] = pd.to_datetime(df['timestamp'], unit='ms')
-        df.set_index('timestamp', inplace=True)
-
-        for col in ['open', 'high', 'low', 'close']:
-            df[col] = df[col].astype(float)
-
-        return df
+        return processed_data
 
     except BinanceAPIException as e:
         print(f"Binance API Error: {e}")
@@ -50,16 +52,15 @@ def get_bitcoin_data():
         print(f"Error fetching Bitcoin data: {e}")
         return None
 
-def find_simple_support_resistance(df):
+def find_simple_support_resistance(data):
     try:
-        if df is None or df.empty:
+        if data is None or not data:
             return None, None, None
 
-        current_price = float(df['close'].iloc[-1])
+        current_price = data[-1]['close']
 
-        simple_support = df['low'].min()
-
-        simple_resistance = df['high'].max()
+        simple_support = min(item['low'] for item in data)
+        simple_resistance = max(item['high'] for item in data)
 
         print(f"Identified simple support level: ${simple_support:,.2f}")
         print(f"Identified simple resistance level: ${simple_resistance:,.2f}")
@@ -103,6 +104,7 @@ def post_tweet(price, level, level_type):
     except Exception as e:
         print(f"Error posting tweet: {e}")
 
+
 def main():
     print("Starting Simplified Bitcoin Support/Resistance Monitor Bot...")
     print("Using Binance API for 4-hour price data")
@@ -112,35 +114,38 @@ def main():
 
     while True:
         try:
-            df = get_bitcoin_data()
-            if df is not None and not df.empty:
-                current_price, simple_support, simple_resistance = find_simple_support_resistance(df)
+            data = get_bitcoin_data()
+            if data is not None and data:
+                current_price, simple_support, simple_resistance = find_simple_support_resistance(data)
 
                 if current_price is not None:
                     print(f"Current Bitcoin price: ${current_price:,.2f}")
 
                     current_time = time.time()
 
-                    if True: #is_near_level(current_price, simple_support):
-                        if (current_time - last_tweet_time) >= MIN_TWEET_INTERVAL and last_tweeted_level != simple_support:
+                    is_near_support = is_near_level(current_price, simple_support)
+                    is_near_resistance = is_near_level(current_price, simple_resistance)
+
+                    if (current_time - last_tweet_time) >= MIN_TWEET_INTERVAL:
+                        if is_near_support and last_tweeted_level != simple_support:
                             print(f"Price ${current_price:,.2f} is near simple support at ${simple_support:,.2f}. Posting tweet...")
                             post_tweet(current_price, simple_support, "support")
                             last_tweet_time = current_time
                             last_tweeted_level = simple_support
+                        elif is_near_resistance and last_tweeted_level != simple_resistance:
+                             print(f"Price ${current_price:,.2f} is near simple resistance at ${simple_resistance:,.2f}. Posting tweet...")
+                             post_tweet(current_price, simple_resistance, "resistance")
+                             last_tweet_time = current_time
+                             last_tweeted_level = simple_resistance
+                        else:
+                            if (current_time - last_tweet_time) >= MIN_TWEET_INTERVAL:
+                                last_tweeted_level = None
+                            print("Price is not near simple support or resistance, or recently tweeted about this level.")
 
-                    elif is_near_level(current_price, simple_resistance):
-                        if (current_time - last_tweet_time) >= MIN_TWEET_INTERVAL and last_tweeted_level != simple_resistance:
-                            print(f"Price ${current_price:,.2f} is near simple resistance at ${simple_resistance:,.2f}. Posting tweet...")
-                            post_tweet(current_price, simple_resistance, "resistance")
-                            last_tweet_time = current_time
-                            last_tweeted_level = simple_resistance
-
-                    else:
-                        last_tweeted_level = None
-                        print("Price is not near simple support or resistance.")
 
                 else:
                      print("Could not determine current price or simple levels.")
+
 
             else:
                 print("Failed to fetch Bitcoin data.")
@@ -152,6 +157,7 @@ def main():
             print(f"Error in main loop: {e}")
             print("Waiting for 5 minutes before retrying after error...")
             time.sleep(300)
+
 
 if __name__ == "__main__":
     main()
