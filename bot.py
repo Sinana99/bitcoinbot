@@ -1,87 +1,57 @@
 import os
 import time
 import tweepy
-from datetime import datetime
+import requests
 from dotenv import load_dotenv
-from binance.client import Client
-from binance.exceptions import BinanceAPIException
 
 load_dotenv()
+
 
 TWITTER_API_KEY = os.getenv('TWITTER_API_KEY')
 TWITTER_API_SECRET = os.getenv('TWITTER_API_SECRET')
 TWITTER_ACCESS_TOKEN = os.getenv('TWITTER_ACCESS_TOKEN')
 TWITTER_ACCESS_TOKEN_SECRET = os.getenv('TWITTER_ACCESS_TOKEN_SECRET')
 
-BINANCE_API_KEY = os.getenv('BINANCE_API_KEY')
-BINANCE_API_SECRET = os.getenv('BINANCE_API_SECRET')
+# --- Fear & Greed Index API Endpoint ---
+# API documentation: https://alternative.me/crypto/fear-and-greed-index/
+FG_INDEX_API_URL = "https://api.alternative.me/fng/"
 
-MIN_TWEET_INTERVAL = 4 * 3600
 
-def get_bitcoin_data():
+CHECK_INTERVAL_SECONDS = 6 * 3600 # Check and tweet four times a day
+
+def get_fear_greed_index():
+    """Fetches the current Crypto Fear & Greed Index value."""
     try:
-        client = Client(BINANCE_API_KEY, BINANCE_API_SECRET)
+  
+        response = requests.get(FG_INDEX_API_URL)
+      
+        data = response.json()
 
-        klines = client.get_klines(
-            symbol='BTCUSDT',
-            interval=Client.KLINE_INTERVAL_1HOUR,
-            limit=96
-        )
+    
+        index_value = int(data['data'][0]['value'])
+        index_classification = data['data'][0]['value_classification']
 
-        processed_data = []
-        for kline in klines:
-            timestamp = datetime.fromtimestamp(kline[0] / 1000)
-            open_price = float(kline[1])
-            high_price = float(kline[2])
-            low_price = float(kline[3])
-            close_price = float(kline[4])
-            processed_data.append({
-                'timestamp': timestamp,
-                'open': open_price,
-                'high': high_price,
-                'low': low_price,
-                'close': close_price
-            })
+        print(f"Fetched Fear & Greed Index: {index_value} ({index_classification})")
+        return index_value, index_classification
 
-        return processed_data
-
-    except BinanceAPIException as e:
-        print(f"Binance API Error: {e}")
-        return None
+    except requests.exceptions.RequestException as e:
+      
+        print(f"Error fetching Fear & Greed Index: {e}")
+        return None, None
+    except (KeyError, IndexError, ValueError) as e:
+        
+        print(f"Error parsing Fear & Greed Index data: {e}")
+        return None, None
     except Exception as e:
-        print(f"Error fetching Bitcoin data: {e}")
-        return None
+        
+        print(f"An unexpected error occurred while fetching index: {e}")
+        return None, None
 
-def find_simple_support_resistance(data):
+
+def post_fear_greed_tweet(index_value, index_classification):
+    """Posts the Fear & Greed Index value to Twitter."""
     try:
-        if data is None or not data:
-            print("No data provided to find support/resistance.")
-            return None, None, None
-
-        current_price = data[-1]['close']
-
-        simple_support = min(item['low'] for item in data)
-        simple_resistance = max(item['high'] for item in data)
-
-        print(f"Identified simple support level: ${simple_support:,.2f}")
-        print(f"Identified simple resistance level: ${simple_resistance:,.2f}")
-
-        return current_price, simple_support, simple_resistance
-
-    except Exception as e:
-        print(f"Error finding simple support/resistance: {e}")
-        return None, None, None
-
-def is_near_level(price, level, threshold=100.0):
-    if level is None:
-        return False
-
-    if abs(price - level) / level < threshold:
-        return True
-    return False
-
-def post_tweet(price, level, level_type):
-    try:
+      
         client = tweepy.Client(
             consumer_key=TWITTER_API_KEY,
             consumer_secret=TWITTER_API_SECRET,
@@ -89,113 +59,71 @@ def post_tweet(price, level, level_type):
             access_token_secret=TWITTER_ACCESS_TOKEN_SECRET
         )
 
-        current_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-        emoji = "🟢" if level_type == "support" else "🔴"
+       
+        emoji = "😨" if "Fear" in index_classification else ("🤩" if "Greed" in index_classification else "��")
+        emoji2 = "🚨"
 
-        tweet_text = f"{emoji} Bitcoin Price Alert {emoji}\n\n" \
-                     f"Current Price: ${price:,.2f}\n" \
-                     f"Approaching {level_type.upper()} level at: ${level:,.2f}\n" \
-                     f"Time: {current_time}\n\n" \
-                     f"#Bitcoin #BTC #Crypto #Trading #{level_type.capitalize()}"
+        
+        tweet_text = f"{emoji2} Crypto Fear & Greed Index Update {emoji2}\n\n" \
+                     f"Current Index: {index_value} {emoji} ({index_classification})\n\n" \
+                     f"#CryptoSentiment #Bitcoin #Crypto #FearAndGreedIndex" # Relevant hashtags
 
+      
         response = client.create_tweet(text=tweet_text)
         print(f"Successfully posted tweet: {tweet_text}")
 
     except tweepy.TweepyException as e:
-        print(f"Twitter API Error: {e}")
+        
+        print(f"Twitter API Error posting tweet: {e}")
     except Exception as e:
+      
         print(f"Error posting tweet: {e}")
-
-def post_initial_tweet():
-    try:
-        client = tweepy.Client(
-            consumer_key=TWITTER_API_KEY,
-            consumer_secret=TWITTER_API_SECRET,
-            access_token=TWITTER_ACCESS_TOKEN,
-            access_token_secret=TWITTER_ACCESS_TOKEN_SECRET
-        )
-
-        # Changed the tweet text to a simple generic message
-        tweet_text = "Hello everyone! Today is a good day! 👋"
-
-        response = client.create_tweet(text=tweet_text)
-        print(f"Successfully posted initial tweet: {tweet_text}")
-
-    except tweepy.TweepyException as e:
-        print(f"Twitter API Error posting initial tweet: {e}")
-    except Exception as e:
-        print(f"Error posting initial tweet: {e}")
 
 
 def main():
-    print("Starting Simplified Bitcoin Support/Resistance Monitor Bot...")
-    print("Using Binance API for 4-hour price data")
+    """Main function to run the Fear & Greed Index bot."""
+    print("Starting Crypto Fear & Greed Index Bot...")
 
-    post_initial_tweet()
+  
+    last_tweet_time = 0
 
-    initial_data = get_bitcoin_data()
-    if initial_data is not None and initial_data:
-        initial_price, initial_support, initial_resistance = find_simple_support_resistance(initial_data)
-        if initial_price is not None and initial_support is not None and initial_resistance is not None:
-            post_initial_tweet(initial_price, initial_support, initial_resistance)
-        else:
-            print("Could not determine initial price or levels for startup tweet.")
-    else:
-        print("Failed to fetch initial Bitcoin data for startup tweet.")
-
-
-    last_tweet_time = time.time()
-    last_tweeted_level = None
-
+   
     while True:
         try:
-            data = get_bitcoin_data()
+            current_time = time.time()
 
-            if data is not None and data:
-                current_price, simple_support, simple_resistance = find_simple_support_resistance(data)
+          
+            if (current_time - last_tweet_time) >= CHECK_INTERVAL_SECONDS:
+          
+                index_value, index_classification = get_fear_greed_index()
 
-                if current_price is not None:
-                    print(f"Current Bitcoin price: ${current_price:,.2f}")
-
-                    current_time = time.time()
-
-                    is_near_support = is_near_level(current_price, simple_support)
-                    is_near_resistance = is_near_level(current_price, simple_resistance)
-
-                    if (current_time - last_tweet_time) >= MIN_TWEET_INTERVAL:
-                         last_tweeted_level = None
-
-                         if is_near_support and last_tweeted_level != simple_support:
-                             print(f"Price ${current_price:,.2f} is near simple support at ${simple_support:,.2f}. Posting tweet...")
-                             post_tweet(current_price, simple_support, "support")
-                             last_tweet_time = current_time
-                             last_tweeted_level = simple_support
-                         elif is_near_resistance and last_tweeted_level != simple_resistance:
-                              print(f"Price ${current_price:,.2f} is near simple resistance at ${simple_resistance:,.2f}. Posting tweet...")
-                              post_tweet(current_price, simple_resistance, "resistance")
-                              last_tweet_time = current_time
-                              last_tweeted_level = simple_resistance
-                         else:
-                             print("Price is near a level, but recently tweeted about this specific level, or no levels are near.")
-                    else:
-                        print(f"Minimum tweet interval not met. Waiting {MIN_TWEET_INTERVAL - (current_time - last_tweet_time):.0f} seconds.")
-
-
+              
+                if index_value is not None and index_classification is not None:
+                  
+                    post_fear_greed_tweet(index_value, index_classification)
+                
+                    last_tweet_time = current_time
                 else:
-                     print("Could not determine current price or simple levels.")
-
+              
+                    print("Failed to get Fear & Greed Index data.")
 
             else:
-                print("Failed to fetch Bitcoin data.")
+              
+                time_remaining = CHECK_INTERVAL_SECONDS - (current_time - last_tweet_time)
+                print(f"Next check in {time_remaining:.0f} seconds.")
 
-            print("Waiting for 30 minutes before next check...")
-            time.sleep(1800)
 
         except Exception as e:
+       
             print(f"Error in main loop: {e}")
+            
             print("Waiting for 5 minutes before retrying after error...")
             time.sleep(300)
 
 
+        time.sleep(3600) 
+
+
 if __name__ == "__main__":
+   
     main()
