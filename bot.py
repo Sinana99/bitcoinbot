@@ -71,7 +71,7 @@ def find_simple_support_resistance(data):
         print(f"Error finding simple support/resistance: {e}")
         return None, None, None
 
-def is_near_level(price, level, threshold=0.005):
+def is_near_level(price, level, threshold=100.0):
     if level is None:
         return False
 
