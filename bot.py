@@ -55,6 +55,7 @@ def get_bitcoin_data():
 def find_simple_support_resistance(data):
     try:
         if data is None or not data:
+            print("No data provided to find support/resistance.")
             return None, None, None
 
         current_price = data[-1]['close']
@@ -90,11 +91,12 @@ def post_tweet(price, level, level_type):
 
         current_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         emoji = "🟢" if level_type == "support" else "🔴"
+
         tweet_text = f"{emoji} Bitcoin Price Alert {emoji}\n\n" \
                      f"Current Price: ${price:,.2f}\n" \
                      f"Approaching {level_type.upper()} level at: ${level:,.2f}\n" \
                      f"Time: {current_time}\n\n" \
-                     f"#Bitcoin #BTC #Crypto #Trading #{level_type.capitalize()}Resistance"
+                     f"#Bitcoin #BTC #Crypto #Trading #{level_type.capitalize()}"
 
         response = client.create_tweet(text=tweet_text)
         print(f"Successfully posted tweet: {tweet_text}")
@@ -104,17 +106,49 @@ def post_tweet(price, level, level_type):
     except Exception as e:
         print(f"Error posting tweet: {e}")
 
+def post_initial_tweet(price, support, resistance):
+    try:
+        client = tweepy.Client(
+            consumer_key=TWITTER_API_KEY,
+            consumer_secret=TWITTER_API_SECRET,
+            access_token=TWITTER_ACCESS_TOKEN,
+            access_token_secret=TWITTER_ACCESS_TOKEN_SECRET
+        )
+
+        current_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
+        tweet_text = f"Bot Started! Current BTC Price: ${price:,.2f} #Bitcoin #Crypto"
+
+        response = client.create_tweet(text=tweet_text)
+        print(f"Successfully posted initial tweet: {tweet_text}")
+
+    except tweepy.TweepyException as e:
+        print(f"Twitter API Error posting initial tweet: {e}")
+    except Exception as e:
+        print(f"Error posting initial tweet: {e}")
+
 
 def main():
     print("Starting Simplified Bitcoin Support/Resistance Monitor Bot...")
     print("Using Binance API for 4-hour price data")
 
-    last_tweet_time = 0
+    initial_data = get_bitcoin_data()
+    if initial_data is not None and initial_data:
+        initial_price, initial_support, initial_resistance = find_simple_support_resistance(initial_data)
+        if initial_price is not None and initial_support is not None and initial_resistance is not None:
+            post_initial_tweet(initial_price, initial_support, initial_resistance)
+        else:
+            print("Could not determine initial price or levels for startup tweet.")
+    else:
+        print("Failed to fetch initial Bitcoin data for startup tweet.")
+
+    last_tweet_time = time.time()
     last_tweeted_level = None
 
     while True:
         try:
             data = get_bitcoin_data()
+
             if data is not None and data:
                 current_price, simple_support, simple_resistance = find_simple_support_resistance(data)
 
@@ -127,20 +161,22 @@ def main():
                     is_near_resistance = is_near_level(current_price, simple_resistance)
 
                     if (current_time - last_tweet_time) >= MIN_TWEET_INTERVAL:
-                        if is_near_support and last_tweeted_level != simple_support:
-                            print(f"Price ${current_price:,.2f} is near simple support at ${simple_support:,.2f}. Posting tweet...")
-                            post_tweet(current_price, simple_support, "support")
-                            last_tweet_time = current_time
-                            last_tweeted_level = simple_support
-                        elif is_near_resistance and last_tweeted_level != simple_resistance:
-                             print(f"Price ${current_price:,.2f} is near simple resistance at ${simple_resistance:,.2f}. Posting tweet...")
-                             post_tweet(current_price, simple_resistance, "resistance")
+                         last_tweeted_level = None
+
+                         if is_near_support and last_tweeted_level != simple_support:
+                             print(f"Price ${current_price:,.2f} is near simple support at ${simple_support:,.2f}. Posting tweet...")
+                             post_tweet(current_price, simple_support, "support")
                              last_tweet_time = current_time
-                             last_tweeted_level = simple_resistance
-                        else:
-                            if (current_time - last_tweet_time) >= MIN_TWEET_INTERVAL:
-                                last_tweeted_level = None
-                            print("Price is not near simple support or resistance, or recently tweeted about this level.")
+                             last_tweeted_level = simple_support
+                         elif is_near_resistance and last_tweeted_level != simple_resistance:
+                              print(f"Price ${current_price:,.2f} is near simple resistance at ${simple_resistance:,.2f}. Posting tweet...")
+                              post_tweet(current_price, simple_resistance, "resistance")
+                              last_tweet_time = current_time
+                              last_tweeted_level = simple_resistance
+                         else:
+                             print("Price is near a level, but recently tweeted about this specific level, or no levels are near.")
+                    else:
+                        print(f"Minimum tweet interval not met. Waiting {MIN_TWEET_INTERVAL - (current_time - last_tweet_time):.0f} seconds.")
 
 
                 else:
